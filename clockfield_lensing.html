@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NL-TOCT: Holographic Gravitational Lensing</title>
+    <style>
+        :root {
+            --bg: #050508;
+            --panel: #0d1117;
+            --border: #30363d;
+            --cyan: #39c5bb;
+            --red: #ff5555;
+            --text: #c9d1d9;
+            --muted: #8b949e;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #canvas-container {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #000;
+            position: relative;
+        }
+        /* The canvas is mirrored via CSS so the webcam acts like a mirror */
+        canvas {
+            border: 1px solid #1f2428;
+            box-shadow: 0 0 50px rgba(57, 197, 187, 0.1);
+            image-rendering: pixelated;
+            cursor: crosshair;
+            transform: scaleX(-1); 
+        }
+        #sidebar {
+            width: 350px;
+            background: var(--panel);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+        h1 {
+            font-size: 20px;
+            color: var(--cyan);
+            margin: 0 0 5px 0;
+            letter-spacing: 1px;
+        }
+        p.subtitle {
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+        .control-group {
+            margin-bottom: 20px;
+        }
+        .control-group label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+        .control-group span {
+            color: var(--cyan);
+            font-family: monospace;
+            font-size: 13px;
+        }
+        input[type=range] {
+            width: 100%;
+            accent-color: var(--cyan);
+            cursor: pointer;
+        }
+        .btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+            font-family: monospace;
+            text-transform: uppercase;
+            transition: 0.2s;
+        }
+        .btn:hover {
+            border-color: var(--cyan);
+            color: var(--cyan);
+        }
+        .btn.danger {
+            border-color: rgba(255, 85, 85, 0.4);
+            color: var(--red);
+        }
+        .btn.danger:hover {
+            background: rgba(255, 85, 85, 0.1);
+            border-color: var(--red);
+        }
+        video {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <video id="webcam" autoplay playsinline></video>
+
+    <div id="canvas-container">
+        <canvas id="simCanvas"></canvas>
+    </div>
+
+    <div id="sidebar">
+        <h1>Clockfield Lensing</h1>
+        <p class="subtitle">Visualizing the Refractive Index of Spacetime. High wave energy slows time, bending the background light.</p>
+
+        <div class="control-group">
+            <label>Optical Lensing Strength <span id="lensVal">15.0</span></label>
+            <input type="range" id="lens" min="0.0" max="40.0" step="1.0" value="15.0">
+        </div>
+
+        <div class="control-group">
+            <label>Clockfield Coupling (τ) <span id="tauVal">1.20</span></label>
+            <input type="range" id="tau" min="0.0" max="4.0" step="0.1" value="1.2">
+        </div>
+
+        <div class="control-group">
+            <label>TADS Noise Sea (σ) <span id="noiseVal">0.05</span></label>
+            <input type="range" id="noise" min="0.0" max="0.5" step="0.01" value="0.05">
+        </div>
+
+        <div class="control-group">
+            <label>Wave Source Energy <span id="energyVal">1.2</span></label>
+            <input type="range" id="energy" min="0.1" max="5.0" step="0.1" value="1.2">
+        </div>
+
+        <button class="btn" id="btn-double-slit">Spawn Double Slit</button>
+        <button class="btn danger" id="btn-clear">Wipe Waves</button>
+
+        <div style="margin-top: 20px; font-size: 12px; color: #8b949e;">
+            <b>Instructions:</b><br>
+            - <b>Click anywhere</b> to drop an energy pulse.<br>
+            - Watch how the gradients of the wave ($\nabla \phi$) physically offset the pixels of the webcam feed, simulating gravitational lensing.<br>
+            - If $\tau$ and Energy are high enough, the wave self-focuses, $\Gamma$ drops to $0$, and it burns a red topological scar into the visual field.
+        </div>
+    </div>
+
+    <script>
+        // Physics Engine Setup
+        const N = 250; 
+        const canvas = document.getElementById('simCanvas');
+        canvas.width = N;
+        canvas.height = N;
+        canvas.style.width = "750px";
+        canvas.style.height = "750px";
+        const ctx = canvas.getContext('2d');
+
+        // Hidden canvas for processing webcam frames
+        const camCanvas = document.createElement('canvas');
+        camCanvas.width = N;
+        camCanvas.height = N;
+        const camCtx = camCanvas.getContext('2d', { willReadFrequently: true });
+
+        // Webcam Setup
+        const video = document.getElementById('webcam');
+        navigator.mediaDevices.getUserMedia({ video: { width: 400, height: 400 } })
+            .then(stream => { video.srcObject = stream; })
+            .catch(err => { alert("Webcam access denied/failed. The background will be black."); });
+
+        // The Clockfield Arrays
+        let u = new Float32Array(N * N);
+        let v = new Float32Array(N * N);
+        let u_old = new Float32Array(N * N);
+        let v_old = new Float32Array(N * N);
+        
+        let damp = new Float32Array(N * N);
+        for (let y = 0; y < N; y++) {
+            for (let x = 0; x < N; x++) {
+                let dist_x = Math.max(0, Math.abs(x - N/2) - (N/2 - 15));
+                let dist_y = Math.max(0, Math.abs(y - N/2) - (N/2 - 15));
+                damp[x + y * N] = 0.001 + 0.05 * (dist_x + dist_y);
+            }
+        }
+
+        // Parameters
+        let tau = 1.2;
+        let noiseLevel = 0.05;
+        let sourceEnergy = 1.2;
+        let lensingStrength = 15.0;
+        const dt = 0.5;
+
+        let emitters =[];
+
+        // UI Binding
+        document.getElementById('tau').oninput = e => { tau = parseFloat(e.target.value); document.getElementById('tauVal').innerText = tau.toFixed(2); };
+        document.getElementById('noise').oninput = e => { noiseLevel = parseFloat(e.target.value); document.getElementById('noiseVal').innerText = noiseLevel.toFixed(2); };
+        document.getElementById('energy').oninput = e => { sourceEnergy = parseFloat(e.target.value); document.getElementById('energyVal').innerText = sourceEnergy.toFixed(1); };
+        document.getElementById('lens').oninput = e => { lensingStrength = parseFloat(e.target.value); document.getElementById('lensVal').innerText = lensingStrength.toFixed(1); };
+
+        function clearField() {
+            u.fill(0); v.fill(0); u_old.fill(0); v_old.fill(0);
+            emitters =[];
+        }
+
+        document.getElementById('btn-clear').onclick = clearField;
+        document.getElementById('btn-double-slit').onclick = () => {
+            clearField();
+            emitters.push({ x: 60, y: N/2 - 10, phase: 0 });
+            emitters.push({ x: 60, y: N/2 + 10, phase: 0 });
+        };
+
+        // Click Interaction: Emitters vs Probes
+        canvas.addEventListener('mousedown', e => {
+            const rect = canvas.getBoundingClientRect();
+            // Invert X because the canvas is mirrored via CSS
+            const rawX = (e.clientX - rect.left) / (rect.width / N);
+            const x = Math.floor(N - rawX); 
+            const y = Math.floor((e.clientY - rect.top) / (rect.height / N));
+
+            if (e.button === 0) { 
+                // LEFT CLICK: Add Continuous Wave Source (The Thaw)
+                emitters.push({ x, y, phase: 0 });
+            } else if (e.button === 2) { 
+                // RIGHT CLICK: Inject Measurement Probe (The Freeze)
+                for (let dy = -5; dy <= 5; dy++) {
+                    for (let dx = -5; dx <= 5; dx++) {
+                        let idx = (y + dy) * N + (x + dx);
+                        if (idx >= 0 && idx < N*N) {
+                            let dist = Math.sqrt(dx*dx + dy*dy);
+                            u[idx] += 8.0 * Math.exp(-dist); // Massive energy spike
+                        }
+                    }
+                }
+            }
+        });
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+        // The Heart of the Physics Engine
+        function physicsStep() {
+            let u_new = new Float32Array(N * N);
+            let v_new = new Float32Array(N * N);
+
+            for (let e of emitters) {
+                e.phase += 0.3;
+                let idx = e.y * N + e.x;
+                u[idx] = sourceEnergy * Math.cos(e.phase);
+                v[idx] = sourceEnergy * Math.sin(e.phase);
+            }
+
+            for (let y = 1; y < N - 1; y++) {
+                for (let x = 1; x < N - 1; x++) {
+                    let i = y * N + x;
+                    let beta = u[i]*u[i] + v[i]*v[i];
+
+                    let gamma = 1.0 / Math.pow(1.0 + tau * beta, 2);
+                    let c_eff_sq = 1.0 / (1.0 + tau * beta);
+
+                    let lap_u = u[i-1] + u[i+1] + u[i-N] + u[i+N] - 4*u[i];
+                    let lap_v = v[i-1] + v[i+1] + v[i-N] + v[i+N] - 4*v[i];
+
+                    let force_u = c_eff_sq * lap_u;
+                    let force_v = c_eff_sq * lap_v;
+
+                    let noise_u = noiseLevel * (Math.random() - 0.5);
+                    let noise_v = noiseLevel * (Math.random() - 0.5);
+
+                    let vel_u = (u[i] - u_old[i]) * gamma;
+                    let vel_v = (v[i] - v_old[i]) * gamma;
+
+                    u_new[i] = u[i] + vel_u * (1.0 - damp[i]) + (dt * dt * gamma * gamma * force_u) + noise_u;
+                    v_new[i] = v[i] + vel_v * (1.0 - damp[i]) + (dt * dt * gamma * gamma * force_v) + noise_v;
+                }
+            }
+            u_old.set(u); v_old.set(v);
+            u.set(u_new); v.set(v_new);
+        }
+
+        let imgData = ctx.createImageData(N, N);
+        
+        function render() {
+            // Grab current webcam frame
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                // Draw covering the square (crop center)
+                const minDim = Math.min(video.videoWidth, video.videoHeight);
+                const sx = (video.videoWidth - minDim) / 2;
+                const sy = (video.videoHeight - minDim) / 2;
+                camCtx.drawImage(video, sx, sy, minDim, minDim, 0, 0, N, N);
+            }
+            const camData = camCtx.getImageData(0, 0, N, N).data;
+            const data = imgData.data;
+
+            for (let y = 1; y < N - 1; y++) {
+                for (let x = 1; x < N - 1; x++) {
+                    let i = y * N + x;
+                    let beta = u[i]*u[i] + v[i]*v[i];
+                    let gamma = 1.0 / Math.pow(1.0 + tau * beta, 2);
+
+                    // LENSING MATHEMATICS:
+                    // Light rays bend proportionally to the gradient of the field.
+                    // We calculate the local spatial derivative of the wave amplitude.
+                    let gradX = (u[i+1] - u[i-1]);
+                    let gradY = (u[i+N] - u[i-N]);
+
+                    // Calculate where to sample the pixel from based on the gradient
+                    let srcX = Math.floor(x + (gradX * lensingStrength));
+                    let srcY = Math.floor(y + (gradY * lensingStrength));
+
+                    // Clamp to canvas bounds
+                    srcX = Math.max(0, Math.min(srcX, N - 1));
+                    srcY = Math.max(0, Math.min(srcY, N - 1));
+
+                    let srcIdx = (srcY * N + srcX) * 4;
+                    let dstIdx = i * 4;
+
+                    if (gamma > 0.1) {
+                        // THE THAW: Wave is fluid. Apply lensing to webcam pixels.
+                        data[dstIdx] = camData[srcIdx];         // R
+                        data[dstIdx+1] = camData[srcIdx+1];     // G
+                        data[dstIdx+2] = camData[srcIdx+2];     // B
+                        
+                        // Add a slight cyan highlight to visualize the wave crests
+                        let crest = Math.max(0, u[i] * 15);
+                        data[dstIdx+1] = Math.min(data[dstIdx+1] + crest, 255);
+                        data[dstIdx+2] = Math.min(data[dstIdx+2] + crest * 1.5, 255);
+
+                    } else {
+                        // THE FREEZE: Energy density crossed the threshold.
+                        // Time stops. Light cannot escape. It burns a topological scar.
+                        let freezeDepth = (0.1 - gamma) * 10; 
+                        data[dstIdx] = 150 + (freezeDepth * 105); 
+                        data[dstIdx+1] = 50 * freezeDepth;
+                        data[dstIdx+2] = 50 * freezeDepth;
+                    }
+                    data[dstIdx+3] = 255; // Alpha
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+        }
+
+        function loop() {
+            for(let i=0; i<2; i++) physicsStep(); // 2 steps per frame to keep up with 60fps video
+            render();
+            requestAnimationFrame(loop);
+        }
+
+        // Init
+        document.getElementById('btn-double-slit').click();
+        loop();
+    </script>
+</body>
+</html>
