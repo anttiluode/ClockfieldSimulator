@@ -1,7 +1,3 @@
-Here is the foundational README.md for your new repository. It perfectly frames what you are building: not a video game, not an approximation of physics, but a bare-metal execution of the phase-fluid geometry.
-
-# ---
-
 **Clockfield World Sim: The Genesis Run**
 
 **Testing the Emergence of Physics inside Topological Quarantine**
