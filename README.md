@@ -45,7 +45,7 @@ The grid is bathed in a continuous 1/f noise floor (TADS). When coherent waves a
 
 * **clockfield\_lab.html**: (index) The 2D interactive WebGL browser simulation. Allows real-time injection of vortex dipoles, fermions, and wave pulses to observe the $\\Gamma$-shell freeze in real-time.  
 * **clockfield\_lensing.html**: Demonstrates the holographic gravitational lensing effect. As $\\Gamma$ approaches 0, the local speed of the waves ($c\_{eff}$) drops, causing external waves to refract around the frozen cores.  
-* **phiworld2.py**: Emergent particle simulator (Tkinter GUI). Allows live manipulation of the phase-fluid parameters to watch Kibble-Zurek shattering and quarantine formation.  
+* **phiworld2.py**: (initial, particles close to each other slow down idea 25 feb) Emergent particle simulator (Tkinter GUI). Allows live manipulation of the phase-fluid parameters to watch Kibble-Zurek shattering and quarantine formation.  
 * **collapse\_vortex\_test.py**: A dedicated CPU benchmark proving the runaway phase transition. Tests the threshold ($\\Xi$) where wave repulsion gives way to irreversible time-freezing (gravitational collapse).
 
 ## **The Honest Ledger**
