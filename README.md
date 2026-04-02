@@ -1,5 +1,9 @@
 **Clockfield World Sim: The Genesis Run**
 
+Test clockfield lab at: 
+
+https://anttiluode.github.io/ClockfieldSimulator/
+
 **Testing the Emergence of Physics inside Topological Quarantine**
 
 Antti Luode — PerceptionLab, Helsinki, Finland
